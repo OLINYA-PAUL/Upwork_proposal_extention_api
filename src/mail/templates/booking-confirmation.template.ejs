@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Booking Confirmation</title>
+    <style>
+      body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 0; }
+      .container { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+      .header { background-color: #14a800; padding: 24px; text-align: center; }
+      .header h1 { color: #ffffff; margin: 0; font-size: 24px; }
+      .body { padding: 32px; }
+      .body p { color: #444444; font-size: 15px; line-height: 1.6; }
+      .details-box { background-color: #f0faf0; border-radius: 8px; padding: 20px; margin: 24px 0; }
+      .details-box p { margin: 8px 0; color: #333333; }
+      .details-box strong { color: #14a800; }
+      .footer { background-color: #f4f4f4; text-align: center; padding: 16px; color: #aaaaaa; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>Upwork Proposal AI</h1>
+      </div>
+      <div class="body">
+        <p>Hi <strong><%= name %></strong>,</p>
+        <p>Your booking has been confirmed. Here are your session details:</p>
+        <div class="details-box">
+          <p><strong>Session Type:</strong> <%= sessionType %></p>
+          <p><strong>Guru:</strong> <%= guruName %></p>
+          <p><strong>Scheduled At:</strong> <%= scheduledAt %></p>
+          <p><strong>Amount Paid:</strong> $<%= amountUsd %></p>
+          <% if (meetingLink) { %>
+          <p><strong>Meeting Link:</strong> <a href="<%= meetingLink %>"><%= meetingLink %></a></p>
+          <% } %>
+        </div>
+        <p>If you have any questions, please contact our support team.</p>
+      </div>
+      <div class="footer">
+        &copy; <%= year %> Upwork Proposal AI. All rights reserved.
+      </div>
+    </div>
+  </body>
+</html>

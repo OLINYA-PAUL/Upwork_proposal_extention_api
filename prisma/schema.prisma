@@ -1,0 +1,360 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "mongodb"
+    url      = env("MONGO_URL")
+}
+
+// ── ENUMS ──────────────────────────────────────────────────
+
+enum Plan {
+    FREE
+    STARTER
+    PRO
+}
+
+enum ProposalStatus {
+    DRAFT
+    SUBMITTED
+    INTERVIEW
+    HIRED
+    REJECTED
+}
+
+enum GuruStatus {
+    PENDING
+    APPROVED
+    SUSPENDED
+}
+
+enum SessionType {
+    PROPOSAL_REVIEW
+    COACHING
+    TEMPLATE_PURCHASE
+}
+
+enum BookingStatus {
+    PENDING
+    PAID
+    COMPLETED
+    CANCELLED
+}
+
+enum TemplateStatus {
+    DRAFT
+    PUBLISHED
+}
+
+enum NotificationType {
+    BOOKING_CONFIRMED
+    BOOKING_CANCELLED
+    PROPOSAL_STATUS_CHANGED
+    OTP_SENT
+    PAYMENT_RECEIVED
+    PAYOUT_PROCESSED
+}
+
+enum NotificationChannel {
+    EMAIL
+    IN_APP
+}
+
+enum PayoutStatus {
+    PENDING
+    PROCESSED
+    FAILED
+}
+
+enum Role {
+    USER
+    GURU
+    ADMIN
+}
+
+model DeviceFingerprint {
+    id          String   @id @default(auto()) @map("_id") @db.ObjectId
+    fingerprint String   @unique // hashed device fingerprint
+    userId      String?  @db.ObjectId // null if unregistered attempt
+    createdAt   DateTime @default(now())
+
+    @@map("device_fingerprints")
+}
+
+// ── USER ───────────────────────────────────────────────────
+// Auth: Email + Password + OTP verification (no OAuth)
+
+model User {
+    id           String  @id @default(auto()) @map("_id") @db.ObjectId
+    name         String
+    email        String  @unique
+    passwordHash String
+    avatarUrl    String?
+    fileId       String?
+    restricted   Boolean @default(false)
+
+    trialStartedAt DateTime? // set on first proposal generation
+    trialExpiresAt DateTime? // trialStartedAt + 30 days
+    lastRequestAt  DateTime? // last proposal generation timestamp
+    fingerprint    String? // hashed device fingerprint linked to user
+
+    emailVerified Boolean @default(false)
+    role          Role    @default(USER)
+
+    plan             Plan    @default(FREE)
+    paddleCustomerId String?
+    paddleSubId      String?
+
+    proposalsThisMonth Int      @default(0)
+    proposalsToday     Int      @default(0)
+    dailyResetAt       DateTime @default(now())
+
+    // Referral
+    referredById String? @db.ObjectId
+    referredBy   User?   @relation("Referrals", fields: [referredById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+    referrals    User[]  @relation("Referrals")
+
+    lastLoginAt DateTime?
+    deletedAt   DateTime?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    proposals          Proposal[]
+    guru               Guru?
+    bookings           Booking[]
+    purchasedTemplates PurchasedTemplate[]
+    reviews            Review[]
+    notifications      Notification[]
+
+    @@map("users")
+}
+
+// ── PROPOSAL ───────────────────────────────────────────────
+// Auto-saved on each extension generation. Belongs to one user only.
+
+model Proposal {
+    id String @id @default(auto()) @map("_id") @db.ObjectId
+
+    userId String @db.ObjectId
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    // Scraped from Upwork DOM
+    jobTitle         String
+    jobUrl           String
+    jobDescription   String
+    jobBudget        String?
+    clientLocation   String?
+    clientHireRate   String?
+    clientTotalSpent String?
+
+    proposalText     String
+    screeningAnswers ScreeningAnswer[]
+
+    // AI quality score (0–100) shown to user after generation
+    aiScore Int?
+
+    status ProposalStatus @default(DRAFT)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@map("proposals")
+}
+
+// Maps one screening question to its AI-generated answer
+type ScreeningAnswer {
+    question String
+    answer   String
+}
+
+// ── GURU ───────────────────────────────────────────────────
+// One-to-one with User. Must be approved before bookings/templates are live.
+
+model Guru {
+    id String @id @default(auto()) @map("_id") @db.ObjectId
+
+    userId String @unique @db.ObjectId
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    specialty        String[]
+    bio              String
+    upworkProfileUrl String
+    sessionRate      Float // USD
+
+    status GuruStatus @default(PENDING)
+
+    // Recalculated on every new review
+    rating      Float @default(0.0)
+    reviewCount Int   @default(0)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    bookings  Booking[]
+    templates Template[]
+    reviews   Review[]
+    payouts   Payout[]
+
+    @@map("gurus")
+}
+
+// ── BOOKING ────────────────────────────────────────────────
+// Payment via Paddle. Amounts stored at transaction time — never recalculated.
+
+model Booking {
+    id String @id @default(auto()) @map("_id") @db.ObjectId
+
+    userId String @db.ObjectId
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    guruId String @db.ObjectId
+    guru   Guru   @relation(fields: [guruId], references: [id], onDelete: Cascade)
+
+    sessionType SessionType
+    scheduledAt DateTime
+    meetingLink String? // Added by guru after confirmation
+
+    amountUsd           Float
+    platformFeeUsd      Float // 25% platform cut
+    guruEarningsUsd     Float // 75% guru payout
+    paddleTransactionId String? @unique
+
+    status BookingStatus @default(PENDING)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@map("bookings")
+}
+
+// ── TEMPLATE ───────────────────────────────────────────────
+
+model Template {
+    id String @id @default(auto()) @map("_id") @db.ObjectId
+
+    guruId String @db.ObjectId
+    guru   Guru   @relation(fields: [guruId], references: [id], onDelete: Cascade)
+
+    title        String
+    description  String
+    niche        String
+    templateText String
+
+    priceUsd Float
+
+    status        TemplateStatus @default(DRAFT)
+    purchaseCount Int            @default(0)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    purchases PurchasedTemplate[]
+
+    @@map("templates")
+}
+
+// ── PURCHASED TEMPLATE ─────────────────────────────────────
+// One-time Paddle payment grants permanent access.
+
+model PurchasedTemplate {
+    id String @id @default(auto()) @map("_id") @db.ObjectId
+
+    userId String @db.ObjectId
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    templateId String   @db.ObjectId
+    template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+    paddleTransactionId String? @unique
+    amountPaidUsd       Float // Stored at purchase time
+
+    purchasedAt DateTime @default(now())
+
+    @@unique([userId, templateId]) // Prevent duplicate purchases
+    @@map("purchased_templates")
+}
+
+// ── REVIEW ─────────────────────────────────────────────────
+
+model Review {
+    id String @id @default(auto()) @map("_id") @db.ObjectId
+
+    userId String @db.ObjectId
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    guruId String @db.ObjectId
+    guru   Guru   @relation(fields: [guruId], references: [id], onDelete: Cascade)
+
+    rating  Int // 1–5, enforced at DTO level
+    comment String
+
+    createdAt DateTime @default(now())
+
+    @@unique([userId, guruId]) // One review per user per guru
+    @@map("reviews")
+}
+
+// ── NOTIFICATION ───────────────────────────────────────────
+// Supports both in-app and email channels. Failed notifications can be retried.
+
+model Notification {
+    id String @id @default(auto()) @map("_id") @db.ObjectId
+
+    userId String @db.ObjectId
+    user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    type    NotificationType
+    channel NotificationChannel
+    title   String
+    body    String
+
+    read     Boolean   @default(false) // For in-app bell UI
+    sentAt   DateTime?
+    failedAt DateTime? // Set if delivery failed — allows retry
+
+    createdAt DateTime @default(now())
+
+    @@map("notifications")
+}
+
+// ── PAYOUT ─────────────────────────────────────────────────
+// Tracks when and how guru earnings were paid out. One payout can cover multiple bookings.
+
+model Payout {
+    id String @id @default(auto()) @map("_id") @db.ObjectId
+
+    guruId String @db.ObjectId
+    guru   Guru   @relation(fields: [guruId], references: [id], onDelete: Cascade)
+
+    amountUsd      Float
+    status         PayoutStatus @default(PENDING)
+    transactionRef String? // External payout reference (e.g. Wise, Paddle)
+
+    periodStart DateTime // Earnings period this payout covers
+    periodEnd   DateTime
+
+    processedAt DateTime?
+    createdAt   DateTime  @default(now())
+
+    @@map("payouts")
+}
+
+// ── PADDLE WEBHOOK EVENT LOG ───────────────────────────────
+// Every webhook is logged before processing to ensure idempotency.
+
+model PaddleWebhookEvent {
+    id String @id @default(auto()) @map("_id") @db.ObjectId
+
+    paddleEventId String @unique // Idempotency key
+    eventType     String
+    payload       String // Raw JSON — full audit trail
+
+    processed   Boolean   @default(false)
+    processedAt DateTime?
+
+    receivedAt DateTime @default(now())
+
+    @@map("paddle_webhook_events")
+}
