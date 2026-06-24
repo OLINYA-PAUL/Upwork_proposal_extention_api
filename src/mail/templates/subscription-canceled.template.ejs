@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Subscription Canceled</title>
+    <style>
+      body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 0; }
+      .container { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+      .header { background-color: #744210; padding: 24px; text-align: center; }
+      .header h1 { color: #ffffff; margin: 0; font-size: 24px; }
+      .body { padding: 32px; }
+      .body p { color: #444444; font-size: 15px; line-height: 1.6; }
+      .info-box { background-color: #fffaf0; border-left: 4px solid #dd6b20; border-radius: 4px; padding: 16px; margin: 24px 0; }
+      .info-box p { margin: 0; color: #c05621; font-size: 14px; }
+      .button { display: inline-block; background-color: #14a800; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-size: 15px; margin: 16px 0; }
+      .footer { background-color: #f4f4f4; text-align: center; padding: 16px; color: #aaaaaa; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>GeniusBid</h1>
+      </div>
+      <div class="body">
+        <p>Hi <strong><%= name %></strong>,</p>
+        <p>Your <strong><%= plan %></strong> subscription has been canceled and your account has been downgraded to the FREE plan.</p>
+        <div class="info-box">
+          <p>ℹ️ You now have access to 1 proposal per 24 hours on the FREE plan. Resubscribe anytime to restore full access.</p>
+        </div>
+        <p>We are sorry to see you go. If you have any feedback or questions, please reach out to our support team.</p>
+        <a href="<%= dashboardUrl %>/billing" class="button">Resubscribe</a>
+      </div>
+      <div class="footer">
+        &copy; <%= year %> GeniusBid. All rights reserved.
+      </div>
+    </div>
+  </body>
+</html>

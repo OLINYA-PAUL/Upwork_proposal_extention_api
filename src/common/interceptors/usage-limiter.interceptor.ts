@@ -11,12 +11,12 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../../settings/settings.service';
 import { Plan } from '@prisma/client';
 
-const TRIAL_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
+const TRIAL_DURATION_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
 const COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 const MONTHLY_LIMITS: Record<string, number | 'unlimited'> = {
   FREE: 1,
-  STARTER: 30,
+  STARTER: 50,
   PRO: 'unlimited',
 };
 

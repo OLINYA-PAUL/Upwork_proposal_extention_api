@@ -229,4 +229,68 @@ export class MailService {
       );
     }
   }
+  async sendPaymentFailed(
+    to: string,
+    name: string,
+    plan: string,
+  ): Promise<void> {
+    const templatePath = path.join(
+      __dirname,
+      'templates',
+      'payment-failed.template.ejs',
+    );
+
+    const html = await ejs.renderFile(templatePath, {
+      name,
+      plan,
+      dashboardUrl: this.configService.get<string>('FRONTEND_URL'),
+      year: new Date().getFullYear(),
+    });
+
+    try {
+      await this.transporter.sendMail({
+        from: `"GeniusBid" <${this.configService.get<string>('SMTP_MAIL')}>`,
+        to,
+        subject: 'Payment Failed — Your Account Has Been Downgraded',
+        html,
+      });
+      this.logger.log(`Payment failed email sent to ${to}`);
+    } catch (error) {
+      this.logger.error(`Failed to send payment failed email to ${to}`, error);
+    }
+  }
+
+  async sendSubscriptionCanceled(
+    to: string,
+    name: string,
+    plan: string,
+  ): Promise<void> {
+    const templatePath = path.join(
+      __dirname,
+      'templates',
+      'subscription-canceled.template.ejs',
+    );
+
+    const html = await ejs.renderFile(templatePath, {
+      name,
+      plan,
+      dashboardUrl: this.configService.get<string>('FRONTEND_URL'),
+      year: new Date().getFullYear(),
+    });
+
+    try {
+      await this.transporter.sendMail({
+        from: `"GeniusBid" <${this.configService.get<string>('SMTP_MAIL')}>`,
+        to,
+        subject: 'Subscription Canceled — GeniusBid',
+        html,
+      });
+      this.logger.log(`Subscription canceled email sent to ${to}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to send subscription canceled email to ${to}`,
+        error,
+      );
+    }
+  }
 }
