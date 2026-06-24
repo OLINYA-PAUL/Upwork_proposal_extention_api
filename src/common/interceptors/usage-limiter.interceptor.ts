@@ -8,22 +8,26 @@ import {
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SettingsService } from '../../settings/settings.service';
 import { Plan } from '@prisma/client';
 
-const TRIAL_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days in ms
-const COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours in ms
+const TRIAL_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
+const COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 const MONTHLY_LIMITS: Record<string, number | 'unlimited'> = {
-  FREE: 1, // 1 per 24 hours after trial — handled separately
-  STARTER: 50, // 50 per month
-  PRO: 'unlimited', // no limit
+  FREE: 1,
+  STARTER: 30,
+  PRO: 'unlimited',
 };
 
 @Injectable()
 export class UsageLimiterInterceptor implements NestInterceptor {
   private readonly logger = new Logger(UsageLimiterInterceptor.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly settingsService: SettingsService,
+  ) {}
 
   async intercept(
     context: ExecutionContext,
@@ -36,7 +40,6 @@ export class UsageLimiterInterceptor implements NestInterceptor {
       throw new ForbiddenException('Authentication required');
     }
 
-    // Always fetch fresh user data — never trust JWT for limits
     const dbUser = await this.prisma.user.findUnique({
       where: { id: user.sub },
       select: {
@@ -65,44 +68,48 @@ export class UsageLimiterInterceptor implements NestInterceptor {
       );
     }
 
-    // PRO plan — skip all checks
+    // PRO plan — unlimited
     if (dbUser.plan === Plan.PRO) {
       return next.handle();
     }
 
     const now = new Date();
 
-    // ── FIRST EVER REQUEST — DECIDE TRIAL ─────────────────
+    // ── FIRST USE — CHECK TRIAL SETTING ───────────────────
     if (!dbUser.trialStartedAt) {
-      await this.handleFirstUse(dbUser, now);
+      // Check if admin has trial enabled
+      const trialEnabled = await this.settingsService.isTrialEnabled();
+
+      if (trialEnabled) {
+        await this.handleFirstUse(dbUser, now);
+      } else {
+        // Trial disabled globally — go straight to free limit
+        this.logger.log(
+          `Trial disabled globally — user ${dbUser.id} goes straight to free limit`,
+        );
+        await this.enforceFreeDailyLimit(dbUser, now);
+      }
+
       return next.handle();
     }
 
-    // ── TRIAL STILL ACTIVE ─────────────────────────────────
+    // ── TRIAL ACTIVE ───────────────────────────────────────
     if (dbUser.trialExpiresAt && now < new Date(dbUser.trialExpiresAt)) {
       await this.prisma.user.update({
         where: { id: dbUser.id },
         data: { lastRequestAt: now },
       });
 
-      this.logger.log(
-        `Trial active for user: ${dbUser.id} — expires: ${dbUser.trialExpiresAt}`,
-      );
-
       return next.handle();
     }
 
     // ── TRIAL EXPIRED ──────────────────────────────────────
-    this.logger.log(
-      `Trial expired for user: ${dbUser.id} — plan: ${dbUser.plan}`,
-    );
-
     if (dbUser.plan === Plan.STARTER) {
       await this.enforceMonthlyLimit(dbUser, now);
       return next.handle();
     }
 
-    // FREE plan after trial — 1 per 24 hours
+    // FREE after trial
     await this.enforceFreeDailyLimit(dbUser, now);
     return next.handle();
   }
@@ -112,7 +119,6 @@ export class UsageLimiterInterceptor implements NestInterceptor {
   private async handleFirstUse(dbUser: any, now: Date): Promise<void> {
     let trialAllowed = true;
 
-    // Check fingerprint abuse only if fingerprint exists
     if (dbUser.fingerprint) {
       const existingFingerprint =
         await this.prisma.deviceFingerprint.findUnique({
@@ -120,10 +126,9 @@ export class UsageLimiterInterceptor implements NestInterceptor {
         });
 
       if (existingFingerprint && existingFingerprint.userId !== dbUser.id) {
-        // Different user — same device — no trial
         trialAllowed = false;
         this.logger.warn(
-          `Trial abuse blocked for user: ${dbUser.id} — device already used by: ${existingFingerprint.userId}`,
+          `Trial abuse blocked — user: ${dbUser.id} — device already used by: ${existingFingerprint.userId}`,
         );
       }
     }
@@ -131,7 +136,6 @@ export class UsageLimiterInterceptor implements NestInterceptor {
     if (trialAllowed) {
       const trialExpiresAt = new Date(now.getTime() + TRIAL_DURATION_MS);
 
-      // Start trial
       await this.prisma.user.update({
         where: { id: dbUser.id },
         data: {
@@ -141,7 +145,6 @@ export class UsageLimiterInterceptor implements NestInterceptor {
         },
       });
 
-      // Store fingerprint to prevent future abuse on this device
       if (dbUser.fingerprint) {
         await this.prisma.deviceFingerprint.upsert({
           where: { fingerprint: dbUser.fingerprint },
@@ -154,12 +157,10 @@ export class UsageLimiterInterceptor implements NestInterceptor {
       }
 
       this.logger.log(
-        `Trial started for user: ${dbUser.id} — expires: ${trialExpiresAt.toISOString()}`,
+        `Trial started — user: ${dbUser.id} expires: ${trialExpiresAt.toISOString()}`,
       );
     } else {
-      // Device already used trial — treat as FREE with 24hr limit
-      // No trialStartedAt set — they go straight to daily limit
-      await this.enforceFreeDailyLimitNoUpdate(dbUser, now);
+      await this.enforceFreeDailyLimit(dbUser, now);
     }
   }
 
@@ -182,7 +183,7 @@ export class UsageLimiterInterceptor implements NestInterceptor {
 
         throw new ForbiddenException({
           message:
-            `Your free trial has expired. You are limited to 1 proposal per 24 hours. ` +
+            `You are limited to 1 proposal per 24 hours. ` +
             `Next request available in ${timeMessage}.`,
           upgradeRequired: true,
           nextAvailableIn: remainingMs,
@@ -190,39 +191,6 @@ export class UsageLimiterInterceptor implements NestInterceptor {
       }
     }
 
-    // Allowed — update last request time
-    await this.prisma.user.update({
-      where: { id: dbUser.id },
-      data: { lastRequestAt: now },
-    });
-  }
-
-  // ── ENFORCE FREE DAILY LIMIT (NO DB UPDATE) ─────────────
-  // Used for abuse case — no trial started, just check and block
-
-  private async enforceFreeDailyLimitNoUpdate(
-    dbUser: any,
-    now: Date,
-  ): Promise<void> {
-    if (dbUser.lastRequestAt) {
-      const timeSinceLastRequest =
-        now.getTime() - new Date(dbUser.lastRequestAt).getTime();
-
-      if (timeSinceLastRequest < COOLDOWN_MS) {
-        const remainingMs = COOLDOWN_MS - timeSinceLastRequest;
-        const remainingHours = Math.ceil(remainingMs / (1000 * 60 * 60));
-
-        throw new ForbiddenException({
-          message:
-            `You are limited to 1 proposal per 24 hours. ` +
-            `Next request available in ${remainingHours} hour${remainingHours > 1 ? 's' : ''}.`,
-          upgradeRequired: true,
-          nextAvailableIn: remainingMs,
-        });
-      }
-    }
-
-    // Allow — update lastRequestAt only
     await this.prisma.user.update({
       where: { id: dbUser.id },
       data: { lastRequestAt: now },
@@ -236,7 +204,6 @@ export class UsageLimiterInterceptor implements NestInterceptor {
 
     if (limit === 'unlimited') return;
 
-    // Count proposals generated this calendar month
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const count = await this.prisma.proposal.count({
@@ -249,7 +216,7 @@ export class UsageLimiterInterceptor implements NestInterceptor {
     if (count >= (limit as number)) {
       throw new ForbiddenException({
         message:
-          `You have reached your monthly limit of ${limit} proposals on the Starter plan. ` +
+          `You have reached your monthly limit of ${limit} proposals. ` +
           `Upgrade to PRO for unlimited access.`,
         upgradeRequired: true,
         currentCount: count,
@@ -257,7 +224,6 @@ export class UsageLimiterInterceptor implements NestInterceptor {
       });
     }
 
-    // Update last request time
     await this.prisma.user.update({
       where: { id: dbUser.id },
       data: { lastRequestAt: now },
