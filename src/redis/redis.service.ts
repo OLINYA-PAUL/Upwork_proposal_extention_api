@@ -83,4 +83,23 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async del(key: string): Promise<void> {
     await this.client.del(key);
   }
+
+  // Store app setting with TTL (default: 5 minutes)
+  async cacheAppSetting(
+    key: string,
+    value: string,
+    ttlSeconds = 300,
+  ): Promise<void> {
+    await this.client.set(`settings:${key}`, value, 'EX', ttlSeconds);
+  }
+
+  // Get cached app setting
+  async getCachedAppSetting(key: string): Promise<string | null> {
+    return this.client.get(`settings:${key}`);
+  }
+
+  // Invalidate cached setting
+  async invalidateAppSetting(key: string): Promise<void> {
+    await this.client.del(`settings:${key}`);
+  }
 }
