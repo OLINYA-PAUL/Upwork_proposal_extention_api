@@ -5,7 +5,9 @@ import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    rawBody: true, // Required for Paddle webhook signature verification
+  });
 
   // Cookie parser — must be before guards
   app.use(cookieParser());
