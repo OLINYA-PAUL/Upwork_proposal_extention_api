@@ -7,9 +7,10 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
-import { Plan } from '@prisma/client';
+import { NotificationType, Plan } from '@prisma/client';
 import { Paddle, Environment } from '@paddle/paddle-node-sdk';
 import { CheckoutPlan } from './dto/create-checkout.dto';
+import { NotificationsService } from 'src/notifications/notifications.service';
 
 @Injectable()
 export class BillingService {
@@ -20,6 +21,7 @@ export class BillingService {
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
+    private readonly notifications: NotificationsService,
   ) {
     this.paddle = new Paddle(this.config.get<string>('PADDLE_API_KEY')!, {
       environment: Environment.sandbox,
@@ -377,6 +379,14 @@ export class BillingService {
       case 'transaction.payment_failed':
         await this.handlePaymentFailed(event.data);
         break;
+      case 'transaction.completed':
+        // Check if it is a template purchase or subscription
+        if (event.data.customData?.type === 'template_purchase') {
+          await this.handleTemplatePurchaseCompleted(event.data);
+        } else {
+          await this.handleTransactionCompleted(event.data);
+        }
+        break;
 
       default:
         this.logger.log(`Unhandled webhook event type: ${event.eventType}`);
@@ -394,12 +404,44 @@ export class BillingService {
       return;
     }
 
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, email: true },
+    });
+
+    if (!user) return;
+
     await this.prisma.user.update({
       where: { id: userId },
       data: {
-        plan: plan as Plan,
+        plan: plan,
         paddleCustomerId: data.customerId,
       },
+    });
+
+    // Send email
+    const amount = plan === 'STARTER' ? 9 : 29;
+    await this.mail.sendSubscriptionActivated(
+      user.email,
+      user.name,
+      plan,
+      amount,
+      new Date().toDateString(),
+    );
+
+    // In-app notification — user
+    await this.notifications.createAndSend({
+      userId,
+      type: NotificationType.PAYMENT_RECEIVED,
+      title: 'Subscription Activated',
+      body: `Your ${plan} plan is now active. Enjoy unlimited proposals.`,
+    });
+
+    // In-app notification — admins
+    await this.notifications.notifyAdmins({
+      type: NotificationType.PAYMENT_RECEIVED,
+      title: 'New Subscription',
+      body: `${user.name} subscribed to the ${plan} plan.`,
     });
 
     this.logger.log(`Transaction completed — user: ${userId} plan: ${plan}`);
@@ -458,10 +500,7 @@ export class BillingService {
   private async handleSubscriptionCanceled(data: any): Promise<void> {
     const userId = data.customData?.userId;
 
-    if (!userId) {
-      this.logger.warn('Subscription canceled missing userId');
-      return;
-    }
+    if (!userId) return;
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -472,13 +511,25 @@ export class BillingService {
 
     await this.prisma.user.update({
       where: { id: userId },
-      data: {
-        plan: Plan.FREE,
-        paddleSubId: null,
-      },
+      data: { plan: Plan.FREE, paddleSubId: null },
     });
 
     await this.mail.sendSubscriptionCanceled(user.email, user.name, user.plan);
+
+    // In-app notification — user
+    await this.notifications.createAndSend({
+      userId,
+      type: NotificationType.BOOKING_CANCELLED,
+      title: 'Subscription Canceled',
+      body: 'Your subscription has been canceled. You are now on the FREE plan.',
+    });
+
+    // In-app notification — admins
+    await this.notifications.notifyAdmins({
+      type: NotificationType.BOOKING_CANCELLED,
+      title: 'Subscription Canceled',
+      body: `${user.name} canceled their subscription.`,
+    });
 
     this.logger.log(`Subscription canceled — user: ${userId}`);
   }
@@ -486,10 +537,7 @@ export class BillingService {
   private async handlePaymentFailed(data: any): Promise<void> {
     const userId = data.customData?.userId;
 
-    if (!userId) {
-      this.logger.warn('Payment failed missing userId');
-      return;
-    }
+    if (!userId) return;
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -500,15 +548,27 @@ export class BillingService {
 
     await this.prisma.user.update({
       where: { id: userId },
-      data: {
-        plan: Plan.FREE,
-        paddleSubId: null,
-      },
+      data: { plan: Plan.FREE, paddleSubId: null },
     });
 
     await this.mail.sendPaymentFailed(user.email, user.name, user.plan);
 
-    this.logger.log(`Payment failed — user: ${userId} downgraded to FREE`);
+    // In-app notification — user
+    await this.notifications.createAndSend({
+      userId,
+      type: NotificationType.PAYMENT_RECEIVED,
+      title: 'Payment Failed',
+      body: 'Your payment failed. Your account has been downgraded to the FREE plan.',
+    });
+
+    // In-app notification — admins
+    await this.notifications.notifyAdmins({
+      type: NotificationType.PAYMENT_RECEIVED,
+      title: 'Payment Failed',
+      body: `Payment failed for user ${user.name}. Account downgraded to FREE.`,
+    });
+
+    this.logger.log(`Payment failed — user: ${userId}`);
   }
 
   // ── PRIVATE HELPERS ─────────────────────────────────────
@@ -537,5 +597,68 @@ export class BillingService {
     });
 
     return customer.id;
+  }
+
+  private async handleTemplatePurchaseCompleted(data: any): Promise<void> {
+    const { userId, templateId } = data.customData;
+
+    if (!userId || !templateId) return;
+
+    const [template, user] = await Promise.all([
+      this.prisma.template.findUnique({
+        where: { id: templateId },
+        include: { category: true },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true, email: true },
+      }),
+    ]);
+
+    if (!template || !user) return;
+
+    // Grant access
+    await this.prisma.purchasedTemplate.create({
+      data: {
+        userId,
+        templateId,
+        paddleTransactionId: data.id,
+        amountPaidUsd: template.priceUsd,
+      },
+    });
+
+    // Increment purchase count
+    await this.prisma.template.update({
+      where: { id: templateId },
+      data: { purchaseCount: { increment: 1 } },
+    });
+
+    // Send email
+    await this.mail.sendTemplatePurchased(
+      user.email,
+      user.name,
+      template.jobTitle,
+      template.category.name,
+      template.priceUsd,
+    );
+
+    // In-app notification — user
+    await this.notifications.createAndSend({
+      userId,
+      type: NotificationType.PAYMENT_RECEIVED,
+      title: 'Template Purchased',
+      body: `You have successfully purchased the template "${template.jobTitle}". View it in your library.`,
+    });
+
+    // In-app notification — admins
+    await this.notifications.notifyAdmins({
+      type: NotificationType.PAYMENT_RECEIVED,
+      title: 'Template Purchased',
+      body: `${user.name} purchased the template "${template.jobTitle}" for $${template.priceUsd}.`,
+    });
+
+    this.logger.log(
+      `Template purchased — user: ${userId} template: ${templateId}`,
+    );
   }
 }
