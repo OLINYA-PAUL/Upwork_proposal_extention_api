@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Patch,
+  Req,
   Delete,
   Body,
   Param,
@@ -40,6 +41,7 @@ export class ProposalsController {
   async generate(
     @Body() dto: GenerateProposalDto,
     @CurrentUser() user: JwtPayload,
+    @Req() req: any,
   ) {
     this.logger.log(`Proposal generation started — user: ${user.sub}`);
 
@@ -52,7 +54,19 @@ export class ProposalsController {
         this.logger.error('Failed to save proposal after generation', err),
       );
 
-    return { proposal, screeningAnswers };
+    return {
+      proposal,
+      screeningAnswers,
+      ...(req.trialRemaining !== undefined && {
+        trialInfo: {
+          trialRemaining: req.trialRemaining,
+          message:
+            req.trialRemaining === 0
+              ? 'You have used all your free proposals. Upgrade to continue.'
+              : `You have ${req.trialRemaining} free proposal${req.trialRemaining > 1 ? 's' : ''} remaining.`,
+        },
+      }),
+    };
   }
 
   // ── REGENERATE ──────────────────────────────────────────

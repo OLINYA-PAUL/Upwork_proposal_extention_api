@@ -18,6 +18,7 @@ import { toUserResponse, toAdminUserResponse } from './dto/user-response.dto';
 import { paginate, getPaginationParams } from '../helpers/pagination.helper';
 import { Role, Plan } from '@prisma/client';
 import { MailService } from 'src/mail/mail.service';
+import { NotificationsService } from 'src/notifications/notifications.service';
 
 @Injectable()
 export class UsersService {
@@ -28,6 +29,7 @@ export class UsersService {
     private readonly redis: RedisService,
     private readonly imagekitHelper: ImageKitHelper,
     private readonly mail: MailService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ── GET CURRENT USER ────────────────────────────────────

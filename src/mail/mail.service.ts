@@ -293,4 +293,79 @@ export class MailService {
       );
     }
   }
+  async sendTemplatePurchased(
+    to: string,
+    name: string,
+    templateTitle: string,
+    category: string,
+    amountPaid: number,
+  ): Promise<void> {
+    const templatePath = path.join(
+      __dirname,
+      'templates',
+      'template-purchased.template.ejs',
+    );
+
+    const html = await ejs.renderFile(templatePath, {
+      name,
+      templateTitle,
+      category,
+      amountPaid,
+      dashboardUrl: this.configService.get<string>('FRONTEND_URL'),
+      year: new Date().getFullYear(),
+    });
+
+    try {
+      await this.transporter.sendMail({
+        from: `"GeniusBid" <${this.configService.get<string>('SMTP_MAIL')}>`,
+        to,
+        subject: 'Template Purchase Successful — GeniusBid',
+        html,
+      });
+      this.logger.log(`Template purchased email sent to ${to}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to send template purchased email to ${to}`,
+        error,
+      );
+    }
+  }
+
+  async sendSubscriptionActivated(
+    to: string,
+    name: string,
+    plan: string,
+    amount: number,
+    startedAt: string,
+  ): Promise<void> {
+    const templatePath = path.join(
+      __dirname,
+      'templates',
+      'subscription-activated.template.ejs',
+    );
+
+    const html = await ejs.renderFile(templatePath, {
+      name,
+      plan,
+      amount,
+      startedAt,
+      dashboardUrl: this.configService.get<string>('FRONTEND_URL'),
+      year: new Date().getFullYear(),
+    });
+
+    try {
+      await this.transporter.sendMail({
+        from: `"GeniusBid" <${this.configService.get<string>('SMTP_MAIL')}>`,
+        to,
+        subject: `Your ${plan} Plan is Now Active — GeniusBid`,
+        html,
+      });
+      this.logger.log(`Subscription activated email sent to ${to}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to send subscription activated email to ${to}`,
+        error,
+      );
+    }
+  }
 }
