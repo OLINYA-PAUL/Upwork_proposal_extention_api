@@ -16,16 +16,30 @@ import { BillingModule } from './billing/billing.module';
 import { CategoriesModule } from './categories/categories.module';
 import { TemplatesModule } from './proposal-templates/templates.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { GurusModule } from './gurus/gurus.module';
+import { BookingsModule } from './bookings/bookings.module';
+import { PayoutsModule } from './payouts/payouts.module';
+import { BlogModule } from './blog/blog.module';
+import { BlogCategoriesModule } from './blog-categories/blog-categories.module';
+import { AdminStatsModule } from './admin-stats/admin-stats.module';
 import jwtConfig from './config/jwt.config';
 import imagekitConfig from './config/imagekit.config';
+import imagekitBlogConfig from './config/imagekit-blog.config';
 import openaiConfig from './config/openai.config';
 import paddleConfig from './config/paddle.config';
+import { UserStatsModule } from './user-stats/user-stats.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [jwtConfig, imagekitConfig, openaiConfig, paddleConfig],
+      load: [
+        jwtConfig,
+        imagekitConfig,
+        imagekitBlogConfig,
+        openaiConfig,
+        paddleConfig,
+      ],
     }),
     ScheduleModule.forRoot(),
     PrismaModule,
@@ -41,6 +55,13 @@ import paddleConfig from './config/paddle.config';
     CategoriesModule,
     TemplatesModule,
     NotificationsModule,
+    GurusModule,
+    BookingsModule,
+    PayoutsModule,
+    BlogModule,
+    BlogCategoriesModule,
+    AdminStatsModule,
+    UserStatsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
