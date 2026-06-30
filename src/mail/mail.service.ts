@@ -368,4 +368,209 @@ export class MailService {
       );
     }
   }
+  async sendGuruApplicationReceived(
+    to: string,
+    name: string,
+    specialty: string[],
+    sessionRate: number,
+  ): Promise<void> {
+    const templatePath = path.join(
+      __dirname,
+      'templates',
+      'guru-application-received.template.ejs',
+    );
+    const html = await ejs.renderFile(templatePath, {
+      name,
+      specialty: specialty.join(', '),
+      sessionRate,
+      year: new Date().getFullYear(),
+    });
+    try {
+      await this.transporter.sendMail({
+        from: `"GeniusBid" <${this.configService.get<string>('SMTP_MAIL')}>`,
+        to,
+        subject: 'Guru Application Received — GeniusBid',
+        html,
+      });
+      this.logger.log(`Guru application received email sent to ${to}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to send guru application received email to ${to}`,
+        error,
+      );
+    }
+  }
+
+  async sendGuruApplicationApproved(to: string, name: string): Promise<void> {
+    const templatePath = path.join(
+      __dirname,
+      'templates',
+      'guru-application-approved.template.ejs',
+    );
+
+    const html = await ejs.renderFile(templatePath, {
+      name,
+      dashboardUrl: this.configService.get<string>('FRONTEND_URL'),
+      year: new Date().getFullYear(),
+    });
+
+    try {
+      await this.transporter.sendMail({
+        from: `"GeniusBid" <${this.configService.get<string>('SMTP_MAIL')}>`,
+        to,
+        subject:
+          'Congratulations! Your Guru Application is Approved — GeniusBid',
+        html,
+      });
+
+      this.logger.log(`Guru application approved email sent to ${to}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to send guru application approved email to ${to}`,
+        error,
+      );
+    }
+  }
+  async sendGuruApplicationRejected(
+    to: string,
+    name: string,
+    reason: string,
+  ): Promise<void> {
+    const templatePath = path.join(
+      __dirname,
+      'templates',
+      'guru-application-rejected.template.ejs',
+    );
+    const html = await ejs.renderFile(templatePath, {
+      name,
+      reason,
+      year: new Date().getFullYear(),
+    });
+    try {
+      await this.transporter.sendMail({
+        from: `"GeniusBid" <${this.configService.get<string>('SMTP_MAIL')}>`,
+        to,
+        subject: 'Guru Application Update — GeniusBid',
+        html,
+      });
+      this.logger.log(`Guru application rejected email sent to ${to}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to send guru application rejected email to ${to}`,
+        error,
+      );
+    }
+  }
+
+  async sendNewBookingToGuru(
+    to: string,
+    guruName: string,
+    userName: string,
+    sessionType: string,
+    scheduledAt: string,
+    guruEarnings: number,
+  ): Promise<void> {
+    const templatePath = path.join(
+      __dirname,
+      'templates',
+      'booking-new-guru.template.ejs',
+    );
+    const html = await ejs.renderFile(templatePath, {
+      guruName,
+      userName,
+      sessionType,
+      scheduledAt,
+      guruEarnings,
+      dashboardUrl: this.configService.get<string>('FRONTEND_URL'),
+      year: new Date().getFullYear(),
+    });
+    try {
+      await this.transporter.sendMail({
+        from: `"GeniusBid" <${this.configService.get<string>('SMTP_MAIL')}>`,
+        to,
+        subject: 'New Booking — GeniusBid',
+        html,
+      });
+      this.logger.log(`New booking email sent to guru: ${to}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to send new booking email to guru: ${to}`,
+        error,
+      );
+    }
+  }
+
+  async sendMeetingLinkAdded(
+    to: string,
+    name: string,
+    sessionType: string,
+    scheduledAt: string,
+    meetingLink: string,
+  ): Promise<void> {
+    const templatePath = path.join(
+      __dirname,
+      'templates',
+      'meeting-link-added.template.ejs',
+    );
+    const html = await ejs.renderFile(templatePath, {
+      name,
+      sessionType,
+      scheduledAt,
+      meetingLink,
+      year: new Date().getFullYear(),
+    });
+    try {
+      await this.transporter.sendMail({
+        from: `"GeniusBid" <${this.configService.get<string>('SMTP_MAIL')}>`,
+        to,
+        subject: 'Meeting Link Added — GeniusBid',
+        html,
+      });
+      this.logger.log(`Meeting link added email sent to ${to}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to send meeting link added email to ${to}`,
+        error,
+      );
+    }
+  }
+
+  async sendPayoutProcessed(
+    to: string,
+    name: string,
+    amount: number,
+    periodStart: string,
+    periodEnd: string,
+    transactionRef: string,
+    processedAt: string,
+  ): Promise<void> {
+    const templatePath = path.join(
+      __dirname,
+      'templates',
+      'payout-processed.template.ejs',
+    );
+    const html = await ejs.renderFile(templatePath, {
+      name,
+      amount,
+      periodStart,
+      periodEnd,
+      transactionRef,
+      processedAt,
+      year: new Date().getFullYear(),
+    });
+    try {
+      await this.transporter.sendMail({
+        from: `"GeniusBid" <${this.configService.get<string>('SMTP_MAIL')}>`,
+        to,
+        subject: 'Payout Processed — GeniusBid',
+        html,
+      });
+      this.logger.log(`Payout processed email sent to ${to}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to send payout processed email to ${to}`,
+        error,
+      );
+    }
+  }
 }

@@ -32,7 +32,6 @@ enum GuruStatus {
 enum SessionType {
     PROPOSAL_REVIEW
     COACHING
-    TEMPLATE_PURCHASE
 }
 
 enum BookingStatus {
@@ -73,6 +72,27 @@ enum Role {
     ADMIN
 }
 
+enum BlogPostStatus {
+    DRAFT
+    PENDING_REVIEW
+    PUBLISHED
+    REJECTED
+    ARCHIVED
+}
+
+// New enums
+enum CancellationStatus {
+    PENDING
+    APPROVED
+    REJECTED
+}
+
+enum DisputeStatus {
+    PENDING
+    REFUNDED
+    REJECTED
+}
+
 model DeviceFingerprint {
     id          String   @id @default(auto()) @map("_id") @db.ObjectId
     fingerprint String   @unique // hashed device fingerprint
@@ -99,8 +119,9 @@ model User {
     lastRequestAt  DateTime? // last proposal generation timestamp
     fingerprint    String? // hashed device fingerprint linked to user
 
-    emailVerified Boolean @default(false)
-    role          Role    @default(USER)
+    emailVerified    Boolean           @default(false)
+    role             Role              @default(USER)
+    guruApplications GuruApplication[]
 
     plan             Plan    @default(FREE)
     paddleCustomerId String?
@@ -127,6 +148,7 @@ model User {
     purchasedTemplates PurchasedTemplate[]
     reviews            Review[]
     notifications      Notification[]
+    blogPosts          BlogPost[]
 
     @@map("users")
 }
@@ -219,6 +241,15 @@ model Booking {
     paddleTransactionId String? @unique
 
     status BookingStatus @default(PENDING)
+
+    cancellationReason String?
+    cancellationStatus CancellationStatus? // PENDING, APPROVED, REJECTED
+    canceledBy         String?             @db.ObjectId
+    canceledAt         DateTime?
+
+    disputeReason   String?
+    disputeStatus   DisputeStatus? // PENDING, REFUNDED, REJECTED
+    disputeRaisedAt DateTime?
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
@@ -399,4 +430,101 @@ model SettingsAuditLog {
     createdAt DateTime @default(now())
 
     @@map("settings_audit_logs")
+}
+
+// Update GuruApplication model — track reapplication
+model GuruApplication {
+    id               String     @id @default(auto()) @map("_id") @db.ObjectId
+    userId           String     @db.ObjectId
+    user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+    specialty        String[]
+    bio              String
+    upworkProfileUrl String
+    sessionRate      Float
+    status           GuruStatus @default(PENDING)
+    rejectedAt       DateTime?
+    createdAt        DateTime   @default(now())
+    updatedAt        DateTime   @updatedAt
+
+    @@map("guru_applications")
+}
+
+model BlogCategory {
+    id        String   @id @default(auto()) @map("_id") @db.ObjectId
+    name      String   @unique
+    slug      String   @unique
+    isDefault Boolean  @default(false)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    posts BlogPost[]
+
+    @@map("blog_categories")
+}
+
+model BlogPost {
+    id      String @id @default(auto()) @map("_id") @db.ObjectId
+    title   String
+    slug    String @unique
+    content String
+
+    excerpt          String?
+    coverImageUrl    String?
+    coverImageFileId String?
+
+    categoryId String       @db.ObjectId
+    category   BlogCategory @relation(fields: [categoryId], references: [id])
+
+    authorId String @db.ObjectId
+    author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+    status          BlogPostStatus @default(DRAFT)
+    rejectionReason String?
+
+    metaTitle       String?
+    metaDescription String?
+    metaKeywords    String[]
+    canonicalUrl    String?
+
+    viewCount Int @default(0)
+    likeCount Int @default(0)
+
+    publishedAt DateTime?
+    createdAt   DateTime  @default(now())
+    updatedAt   DateTime  @updatedAt
+
+    comments BlogComment[]
+    likes    BlogLike[]
+
+    @@map("blog_posts")
+}
+
+model BlogComment {
+    id     String   @id @default(auto()) @map("_id") @db.ObjectId
+    postId String   @db.ObjectId
+    post   BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+    name    String
+    email   String
+    comment String
+
+    editedByAdmin Boolean @default(false)
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@map("blog_comments")
+}
+
+model BlogLike {
+    id     String   @id @default(auto()) @map("_id") @db.ObjectId
+    postId String   @db.ObjectId
+    post   BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+    fingerprint String
+
+    createdAt DateTime @default(now())
+
+    @@unique([postId, fingerprint])
+    @@map("blog_likes")
 }

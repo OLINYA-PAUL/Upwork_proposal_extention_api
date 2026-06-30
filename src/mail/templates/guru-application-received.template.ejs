@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Guru Application Received</title>
+    <style>
+      body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 0; }
+      .container { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+      .header { background-color: #14a800; padding: 24px; text-align: center; }
+      .header h1 { color: #ffffff; margin: 0; font-size: 24px; }
+      .body { padding: 32px; }
+      .body p { color: #444444; font-size: 15px; line-height: 1.6; }
+      .info-box { background-color: #f0faf0; border-left: 4px solid #14a800; border-radius: 4px; padding: 16px; margin: 24px 0; }
+      .info-box p { margin: 4px 0; color: #276749; font-size: 14px; }
+      .footer { background-color: #f4f4f4; text-align: center; padding: 16px; color: #aaaaaa; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header"><h1>GeniusBid</h1></div>
+      <div class="body">
+        <p>Hi <strong><%= name %></strong>,</p>
+        <p>We have received your application to become a Guru on GeniusBid. Our team will review your application and get back to you within 2-3 business days.</p>
+        <div class="info-box">
+          <p><strong>Specialty:</strong> <%= specialty %></p>
+          <p><strong>Session Rate:</strong> $<%= sessionRate %>/hour</p>
+          <p><strong>Status:</strong> Under Review</p>
+        </div>
+        <p>We will notify you once a decision has been made. Thank you for your interest in joining our expert community.</p>
+      </div>
+      <div class="footer">&copy; <%= year %> GeniusBid. All rights reserved.</div>
+    </div>
+  </body>
+</html>

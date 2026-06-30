@@ -11,6 +11,7 @@ import { NotificationType, Plan } from '@prisma/client';
 import { Paddle, Environment } from '@paddle/paddle-node-sdk';
 import { CheckoutPlan } from './dto/create-checkout.dto';
 import { NotificationsService } from 'src/notifications/notifications.service';
+import { BookingsService } from 'src/bookings/bookings.service';
 
 @Injectable()
 export class BillingService {
@@ -22,6 +23,7 @@ export class BillingService {
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly notifications: NotificationsService,
+    private readonly bookingsService: BookingsService,
   ) {
     this.paddle = new Paddle(this.config.get<string>('PADDLE_API_KEY')!, {
       environment: Environment.sandbox,
@@ -387,7 +389,15 @@ export class BillingService {
           await this.handleTransactionCompleted(event.data);
         }
         break;
-
+      case 'transaction.completed':
+        if (event.data.customData?.type === 'template_purchase') {
+          await this.handleTemplatePurchaseCompleted(event.data);
+        } else if (event.data.customData?.type === 'booking') {
+          await this.bookingsService.confirmBookingAfterPayment(event.data);
+        } else {
+          await this.handleTransactionCompleted(event.data);
+        }
+        break;
       default:
         this.logger.log(`Unhandled webhook event type: ${event.eventType}`);
     }
